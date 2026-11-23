@@ -50,6 +50,7 @@ read -rp  "  Usuario de OpenSubtitles.com (Enter para omitir): " OS_USER
 OS_PASS=""
 [ -n "$OS_USER" ] && { read -rsp "  Contraseña de OpenSubtitles.com: " OS_PASS; echo; }
 read -rp  "  ¿Instalar el plugin Moonbase para la app Moonfin en la TV? (s/n): " MOON
+read -rp  "  ¿Sincronizar tu YouTube Music (Me gusta y playlists)? (s/n): " YTM
 export QB_USER QB_PASS JF_USER JF_PASS OS_USER OS_PASS
 
 # ---------- 3. Carpetas y contenedores ----------
@@ -59,13 +60,15 @@ mkdir -p "$DATA_DIR"/AppData/{jellyfin,qbittorrent,prowlarr,radarr,sonarr,lidarr
 chown -R "$PUID:$PGID" "$DATA_DIR/data" "$DATA_DIR/AppData"
 ok "Carpetas en $DATA_DIR"
 [ -e /dev/dri ] || { sed -i 's#^\(\s*\)- /dev/dri:/dev/dri#\1\# - /dev/dri:/dev/dri#' docker-compose.yml; sed -i 's#^\(\s*\)devices:#\1\# devices:#' docker-compose.yml; }
+[[ "${MUSICA:-no}" == si* ]] && export COMPOSE_PROFILES=musica && ok "Música activada (Lidarr)"
 echo "  Descargando e iniciando contenedores (la primera vez tarda varios minutos)..."
 docker compose up -d >/dev/null 2>&1 && ok "Contenedores iniciados" || { err "Falló docker compose up. Probá: sudo docker compose up -d"; exit 1; }
 
 echo "  Esperando a que todas las apps generen su configuración..."
 for i in $(seq 1 60); do
   faltan=0
-  for a in radarr sonarr prowlarr; do [ -f "$DATA_DIR/AppData/$a/config.xml" ] || faltan=1; done
+  APPS="radarr sonarr prowlarr"; [[ "${MUSICA:-no}" == si* ]] && APPS="$APPS lidarr"
+  for a in $APPS; do [ -f "$DATA_DIR/AppData/$a/config.xml" ] || faltan=1; done
   curl -s -o /dev/null http://localhost:8096/System/Info/Public || faltan=1
   curl -s -o /dev/null http://localhost:5055/api/v1/status || faltan=1
   [ $faltan -eq 0 ] && break; sleep 5
@@ -79,6 +82,7 @@ PASOS=(01-configurar-qbittorrent 02-configurar-arr 03-configurar-flaresolverr 04
        05-configurar-jellyfin 06-configurar-seerr 07-configurar-idioma 08-configurar-final
        09-instalar-automatizacion)
 [[ "${MOON,,}" == s* ]] && PASOS+=(10-instalar-moonbase)
+[[ "${YTM,,}"  == s* ]] && PASOS+=(12-instalar-ytmusic)
 for p in "${PASOS[@]}"; do
   echo -e "\n\e[1m▶ $p\e[0m"
   bash "scripts/$p.sh" || err "$p terminó con errores (se puede repetir: sudo bash scripts/$p.sh)"
@@ -99,4 +103,5 @@ $(echo -e "\e[1;32m══ Instalación terminada\e[0m")
   que los abrís en el navegador.
 
   Registro del vigilante:  sudo tail -20 /var/log/media-vigilante.log
+  Registro de YT Music:    sudo tail -20 /var/log/ytmusic-sync.log
 FIN

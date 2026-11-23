@@ -34,7 +34,8 @@ flowchart LR
 | **FlareSolverr** | 8191 | Permite usar sitios protegidos por Cloudflare |
 | **qBittorrent** | 8080 | Descarga los archivos |
 | **Bazarr** | 6767 | Subtítulos en español, limpios y sincronizados |
-| **Lidarr** *(opcional)* | 8686 | Música |
+| **Lidarr** *(opcional)* | 8686 | Música: discografías de artistas |
+| **YT Music Sync** *(opcional)* | — | Tus Me gusta y playlists de YouTube Music en Jellyfin |
 
 ---
 
@@ -52,7 +53,7 @@ flowchart LR
 ## Instalación
 
 ```bash
-git clone https://github.com/TU_USUARIO/servidor-multimedia.git
+git clone https://github.com/Alghulgit94/servidor-multimedia.git
 cd servidor-multimedia
 sudo bash install.sh
 ```
@@ -121,6 +122,31 @@ systemctl list-timers media-vigilante.timer     # cuándo vuelve a correr
 
 ---
 
+## Música y YouTube Music
+
+**Activar la música (Lidarr):** en `.env` poné `MUSICA=si` y ejecutá `sudo bash install.sh` (o, en un servidor ya instalado: `sudo docker compose --profile musica up -d`, `sudo bash scripts/02-configurar-arr.sh` y `sudo bash scripts/09-instalar-automatizacion.sh`). En Lidarr (`http://IP:8686`) buscás un artista y descarga sus álbumes. Seerr y Moonfin no piden música.
+
+**Sincronizar YouTube Music** (`sudo bash scripts/12-instalar-ytmusic.sh`):
+
+| Qué | Cómo |
+|---|---|
+| **Canciones** | Cada 3 horas descarga tus **Me gusta** y las **playlists que elijas**, con artista, álbum y carátula (calidad Premium si tenés Premium) |
+| **Playlists** | Se crean en Jellyfin como *"Nombre (YT Music)"* y se mantienen iguales: lo que agregás o sacás en YT Music se refleja |
+| **De a poco** | Descarga en tandas de 25: después de cada tanda, las canciones y las playlists ya aparecen en Jellyfin |
+| **Artistas** | Si Lidarr está activo, los artistas con varias canciones tuyas (por defecto 3) se agregan solos para bajar su discografía |
+| **Carpeta** | `data/media/ytmusic`, dentro de la biblioteca Música de Jellyfin |
+
+Necesita las **cookies** de tu cuenta, exportadas desde una ventana de **incógnito** (el script explica cómo). Cuando vencen, queda anotado en el registro del vigilante; se renuevan volviendo a ejecutar el script.
+
+```bash
+sudo tail -f /var/log/ytmusic-sync.log     # progreso
+sudo systemctl start ytmusic-sync          # sincronizar ya
+```
+
+> ⚠️ Las cookies dan acceso a tu cuenta de Google: quedan solo en el servidor (`AppData/ytmusic`, permisos restringidos). Nunca las subas al repo. Descargar de YouTube va contra sus términos de uso.
+
+---
+
 ## Moonfin en la TV
 
 [Moonfin](https://github.com/Moonfin-Client/Moonfin-Core) es una app de Jellyfin con Seerr integrado: buscás, pedís y mirás en **una sola app**, sin escribir direcciones IP, y te avisa cuando la película está lista. Está para Android TV / Google TV, Fire TV, Apple TV, Windows, celulares y web.
@@ -162,6 +188,7 @@ Todos se ejecutan con `sudo bash scripts/NOMBRE.sh` y se pueden repetir sin dupl
 | `09-instalar-automatizacion.sh` | Bazarr → Jellyfin, escaneo cada hora y el vigilante |
 | `10-instalar-moonbase.sh` | *(Opcional)* Plugin Moonbase para Moonfin |
 | `11-sincronizar-subtitulos.sh` | Re-sincroniza todos los subtítulos existentes |
+| `12-instalar-ytmusic.sh` | *(Opcional)* Sincronización de YouTube Music y artistas a Lidarr |
 
 ---
 
@@ -171,9 +198,10 @@ Todos se ejecutan con `sudo bash scripts/NOMBRE.sh` y se pueden repetir sin dupl
 DATA_DIR (por defecto /DATA)
 ├── AppData/            ← configuración de cada app (hacé backup de esto)
 │   ├── jellyfin/  radarr/  sonarr/  prowlarr/  bazarr/  seerr/  qbittorrent/
+│   └── ytmusic/        ← cookies y estado de YT Music (privado, no compartir)
 └── data/
     ├── torrents/       ← descargas en curso (movies, tv, music)
-    └── media/          ← biblioteca final ordenada (movies, tv, music)
+    └── media/          ← biblioteca final ordenada (movies, tv, music, ytmusic)
 ```
 
 ---
@@ -187,9 +215,10 @@ sudo docker compose pull && sudo docker compose up -d
 # Backup de la configuración
 sudo tar czf backup-appdata-$(date +%F).tar.gz -C /DATA AppData
 
-# Activar música (Lidarr) y conectarlo
+# Activar música (Lidarr): MUSICA=si en .env y luego
 sudo docker compose --profile musica up -d
 sudo bash scripts/02-configurar-arr.sh
+sudo bash scripts/09-instalar-automatizacion.sh   # para que el vigilante lo cuide
 
 # Ver qué contenedores están corriendo
 sudo docker ps --format "table {{.Names}}\t{{.Status}}"
@@ -212,6 +241,9 @@ Problemas reales que aparecieron durante el armado, y su solución.
 | OpenSubtitles: *Login failed* | Se usó la cuenta de **opensubtitles.org** | Hace falta una cuenta de **opensubtitles.com** (son sitios distintos) |
 | Subtítulo desfasado | Subtítulo de otra versión del video | La sincronización automática lo corrige; para los viejos: `scripts/11-sincronizar-subtitulos.sh` |
 | Jellyfin no muestra algo nuevo | Su monitor no detecta cambios hechos por otro contenedor | Ya resuelto con los avisos directos y el escaneo horario |
+| YT Music: *las cookies no funcionan* | Se exportaron de una ventana normal (YouTube las renueva) o la extensión no corre en incógnito | Permitir la extensión en incógnito (`chrome://extensions` → Detalles) y exportar desde una ventana de incógnito que después se cierra |
+| Una playlist "Mix" aparece con 0 canciones | Los Mix son radios automáticas de YouTube, no playlists reales | Guardar esas canciones en una playlist propia |
+| Jellyfin responde *401* a pedidos con clave | Las versiones nuevas no aceptan `?api_key=` | Los scripts usan `?ApiKey=` (formato nuevo) |
 | Un comando parece colgado | Está esperando la contraseña de `sudo` (no se ve al escribir) | Escribila y apretá Enter |
 
 ---

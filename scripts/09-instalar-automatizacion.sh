@@ -58,7 +58,7 @@ BZ_KEY=$(grep -A10 '^auth:' "$BZ_CONF" 2>/dev/null | sed -n 's/^ *apikey: *//p' 
 if [ -z "$BZ_KEY" ]; then
   err "No se encontró la API key de Bazarr (¿está encendido?)"
 else
-  CMD="curl -s -X POST http://jellyfin:8096/Library/Refresh?api_key=$JF_KEY"
+  CMD="curl -s -X POST http://jellyfin:8096/Library/Refresh?ApiKey=$JF_KEY"
   curl -s -o /dev/null -X POST -H "X-API-KEY: $BZ_KEY" "$BAZARR/api/system/settings" \
     --form-string "settings-general-use_postprocessing=true" \
     --form-string "settings-general-postprocessing_cmd=$CMD" \
@@ -86,7 +86,7 @@ log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 getkey() { sed -n 's:.*<ApiKey>\(.*\)</ApiKey>.*:\1:p' "$APPDATA/$1/config.xml" 2>/dev/null; }
 
 # 1. Contenedores que deben estar siempre encendidos
-SERVICIOS="jellyfin qbittorrent prowlarr radarr sonarr seerr flaresolverr bazarr"
+SERVICIOS="__SERVICIOS__"
 for c in $SERVICIOS; do
   if [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" != "true" ]; then
     docker start "$c" >/dev/null 2>&1 && log "Contenedor $c estaba apagado: encendido"
@@ -114,6 +114,7 @@ check sonarr       http://localhost:8989/ping
 check seerr        http://localhost:5055/api/v1/status
 check bazarr       http://localhost:6767
 check flaresolverr http://localhost:8191
+echo " $SERVICIOS " | grep -q " lidarr " && check lidarr http://localhost:8686/ping
 
 # 3. Reactivar indexadores desactivados por fallos
 reactivar() { # nombre base key version
@@ -152,7 +153,9 @@ LIBRE=$(df -BG --output=avail __DATA_DIR__ | tail -1 | tr -dc '0-9')
 [ "$LIBRE" -lt 20 ] && log "ATENCIÓN: quedan solo ${LIBRE} GB libres en disco"
 exit 0
 VIG
-sed -i "s#__APPDATA__#$APPDATA#; s#__DATA_DIR__#$DATA_DIR#" /usr/local/bin/media-vigilante.sh
+SERVICIOS="jellyfin qbittorrent prowlarr radarr sonarr seerr flaresolverr bazarr"
+[[ "${MUSICA:-no}" == si* ]] && SERVICIOS="$SERVICIOS lidarr"
+sed -i "s#__APPDATA__#$APPDATA#; s#__DATA_DIR__#$DATA_DIR#; s#__SERVICIOS__#$SERVICIOS#" /usr/local/bin/media-vigilante.sh
 chmod +x /usr/local/bin/media-vigilante.sh
 
 cat > /etc/systemd/system/media-vigilante.service << 'UNIT'
