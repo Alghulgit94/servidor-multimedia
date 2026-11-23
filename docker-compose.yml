@@ -1,0 +1,126 @@
+# =====================================================================
+#  Servidor multimedia automatizado
+#  Los valores ${...} se toman del archivo .env (copiá .env.example)
+#
+#  Flujo: Seerr/Moonfin (pedís) -> Radarr/Sonarr (gestionan)
+#         -> Prowlarr (+FlareSolverr) busca -> qBittorrent descarga
+#         -> /data/media -> Jellyfin (mirás) + Bazarr (subtítulos)
+#
+#  Todas las apps comparten /data para mover archivos al instante
+#  (hardlinks) en lugar de copiarlos y ocupar el doble.
+# =====================================================================
+
+x-env: &env
+  PUID: ${PUID:-1000}
+  PGID: ${PGID:-1000}
+  TZ: ${TZ:-UTC}
+
+services:
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    hostname: ${SERVER_NAME:-servidor-multimedia}
+    environment: *env
+    volumes:
+      - ${DATA_DIR:-/DATA}/AppData/jellyfin:/config
+      - ${DATA_DIR:-/DATA}/data/media:/data/media
+    devices:
+      - /dev/dri:/dev/dri            # aceleración de video Intel (borrar si no existe)
+    ports:
+      - 8096:8096
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      <<: *env
+      WEBUI_PORT: 8080
+    volumes:
+      - ${DATA_DIR:-/DATA}/AppData/qbittorrent:/config
+      - ${DATA_DIR:-/DATA}/data:/data
+    ports:
+      - 8080:8080
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment: *env
+    volumes:
+      - ${DATA_DIR:-/DATA}/AppData/prowlarr:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      LOG_LEVEL: info
+      TZ: ${TZ:-UTC}
+    ports:
+      - 8191:8191
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment: *env
+    volumes:
+      - ${DATA_DIR:-/DATA}/AppData/radarr:/config
+      - ${DATA_DIR:-/DATA}/data:/data
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment: *env
+    volumes:
+      - ${DATA_DIR:-/DATA}/AppData/sonarr:/config
+      - ${DATA_DIR:-/DATA}/data:/data
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment: *env
+    volumes:
+      - ${DATA_DIR:-/DATA}/AppData/bazarr:/config
+      - ${DATA_DIR:-/DATA}/data/media:/data/media
+    ports:
+      - 6767:6767
+    restart: unless-stopped
+
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    init: true
+    environment:
+      TZ: ${TZ:-UTC}
+      LOG_LEVEL: info
+    volumes:
+      - ${DATA_DIR:-/DATA}/AppData/seerr:/app/config
+    ports:
+      - 5055:5055
+    restart: unless-stopped
+
+  # Música (opcional). Se activa con: docker compose --profile musica up -d
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    profiles: ["musica"]
+    environment: *env
+    volumes:
+      - ${DATA_DIR:-/DATA}/AppData/lidarr:/config
+      - ${DATA_DIR:-/DATA}/data:/data
+    ports:
+      - 8686:8686
+    restart: unless-stopped

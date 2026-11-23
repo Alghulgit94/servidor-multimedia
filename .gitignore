@@ -1,0 +1,4 @@
+# Configuración local (puede contener tu IP y rutas)
+.env
+# Registros
+*.log
